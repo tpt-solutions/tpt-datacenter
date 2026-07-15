@@ -1,0 +1,45 @@
+[package]
+name = "rust-edge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Real-Time Facility Edge agents (Rust) for PDUs, UPS/BMS, and cooling valves."
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# Async runtime for the edge control-loop supervisor (`control` module) and the
+# Real HAL backends (TcpStream / async IO).
+tokio = { version = "1", features = ["time", "rt", "rt-multi-thread", "macros", "net", "io-util"] }
+# Real-hardware HAL backends (Redfish / Modbus TCP / IPMI) need async TCP I/O.
+serde_json = { version = "1", optional = true }
+base64 = { version = "0.22", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+
+[features]
+default = ["simulator"]
+# Software simulator HAL backend + the hosted demo binary (`tpt-edge`).
+simulator = []
+# Real hardware HAL backends (Redfish / Modbus TCP / IPMI).
+real = ["dep:serde_json", "dep:base64"]
+# no_std build for bare-metal UPS/cooling controllers.
+no_std = []
+
+[[bin]]
+name = "tpt-edge"
+path = "src/bin/tpt-edge.rs"
+required-features = ["simulator"]
+
+# Size/speed-optimized profile for resource-constrained edge hardware.
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
+

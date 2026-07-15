@@ -1,0 +1,24 @@
+# Cross-compilation configuration for the Real-Time Facility Edge.
+#
+# Target platforms (Phase 2): Raspberry Pi Compute Module 4 and industrial ARM
+# controllers. The edge agents run on 64-bit Raspberry Pi OS (Debian-based), so
+# the primary cross target is `aarch64-unknown-linux-gnu`.
+#
+# Build natively on an aarch64 host, or cross-compile from x86_64:
+#   cargo build --release --target aarch64-unknown-linux-gnu --features real
+# or, using `cross` (Docker-based, no local toolchain needed):
+#   cross build --release --target aarch64-unknown-linux-gnu --features real
+#
+# For true bare-metal UPS/cooling controllers, build with `--no-default-features
+# --features no_std` against a `#![no_std]` target (e.g. thumbv7em-none-eabihf).
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+
+# Uncomment to make `aarch64-unknown-linux-gnu` the default cross target:
+# [build]
+# target = "aarch64-unknown-linux-gnu"
+
+[alias]
+# Convenience: build the edge firmware for the Pi.
+edge-pi = "build --release --target aarch64-unknown-linux-gnu --features real --bin tpt-edge"

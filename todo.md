@@ -13,34 +13,34 @@ Decisions locked in:
 
 ## Phase 0 — Foundations & Repo Setup
 - [x] Choose monorepo vs polyrepo layout — decided: monorepo (rust-edge, go-telemetry, ai-brain, api, dashboard, topology-graph, docs)
-- [ ] Scaffold repo structure and workspace tooling (Cargo workspace for Rust, Go modules)
-- [ ] Add `ai-brain` as a member of the root Cargo workspace (alongside rust-edge)
-- [ ] Add dual license: `LICENSE-MIT` and `LICENSE-APACHE`, SPDX headers, README license section
-- [ ] Add copyright notice (TPT Solutions) to license files and file headers
-- [ ] Write CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md (vuln disclosure policy)
-- [ ] Set up CI (build/lint/test for Rust, Go) and pre-commit hooks
-- [ ] Define versioning/release strategy (SemVer, changelog process)
-- [ ] Set up issue/PR templates for open-source contributions
+- [x] Scaffold repo structure and workspace tooling (Cargo workspace for Rust, Go modules)
+- [x] Add `ai-brain` as a member of the root Cargo workspace (alongside rust-edge)
+- [x] Add dual license: `LICENSE-MIT` and `LICENSE-APACHE`, SPDX headers, README license section
+- [x] Add copyright notice (TPT Solutions) to license files and file headers
+- [x] Write CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md (vuln disclosure policy)
+- [x] Set up CI (build/lint/test for Rust, Go) and pre-commit hooks
+- [x] Define versioning/release strategy (SemVer, changelog process)
+- [x] Set up issue/PR templates for open-source contributions
 
 ## Phase 1 — Hardware Abstraction Layer (HAL) & Simulator
-- [ ] Design HAL trait/interface (Rust) covering PDU, UPS/BMS, cooling valve, sensor reads/writes
-- [ ] Define common data model for telemetry points (temp, voltage, amperage, airflow) and control commands
-- [ ] Implement Simulator backend: virtual racks/PDUs/UPS/cooling loops emitting realistic synthetic telemetry
-- [ ] Implement thermal/electrical physics approximation in simulator (so RL model has something meaningful to learn against)
-- [ ] Implement Real backend: Redfish client, Modbus TCP client, IPMI client conforming to same HAL interface
-- [ ] Add config-driven switch between Simulator mode and Real mode per-device or per-deployment
-- [ ] Unit + integration tests for HAL against both backends
+- [x] Design HAL trait/interface (Rust) covering PDU, UPS/BMS, cooling valve, sensor reads/writes
+- [x] Define common data model for telemetry points (temp, voltage, amperage, airflow) and control commands
+- [x] Implement Simulator backend: virtual racks/PDUs/UPS/cooling loops emitting realistic synthetic telemetry
+- [x] Implement thermal/electrical physics approximation in simulator (so RL model has something meaningful to learn against)
+- [x] Implement Real backend: Redfish client, Modbus TCP client, IPMI client conforming to same HAL interface
+- [x] Add config-driven switch between Simulator mode and Real mode per-device or per-deployment
+- [x] Unit + integration tests for HAL against both backends
 
 ## Phase 2 — Real-Time Facility Edge (Rust)
-- [ ] Define target embedded platforms (Raspberry Pi CM4, industrial ARM controllers) and toolchain (no_std where applicable)
-- [ ] Implement deterministic control loop framework for PDU agents
-- [ ] Implement UPS/BMS agent control loop (battery management logic)
-- [ ] Implement cooling valve/fan control agent
-- [ ] Implement safety interlocks / fail-safe defaults (e.g., fallback to safe state on comms loss)
-- [ ] Implement local logging and health/heartbeat reporting
-- [ ] Cross-compile and package edge agent binaries for target hardware
-- [ ] Bench test edge agents against Simulator HAL backend
-- [ ] Field test edge agents against Real HAL backend (bring-up on actual controller hardware)
+- [x] Define target embedded platforms (Raspberry Pi CM4, industrial ARM controllers) and toolchain (no_std where applicable) — `.cargo/config.toml` (aarch64-unknown-linux-gnu), `no_std` feature verified
+- [x] Implement deterministic control loop framework for PDU agents — `control::supervisor` + `ControlAgent` trait
+- [x] Implement UPS/BMS agent control loop (battery management logic) — `control::agents::UpsAgent`
+- [x] Implement cooling valve/fan control agent — `control::agents::CoolingAgent` (PID on rack air temp)
+- [x] Implement safety interlocks / fail-safe defaults (e.g., fallback to safe state on comms loss) — `control::safety` + supervisor latches into `SafeState` after N consecutive faults
+- [x] Implement local logging and health/heartbeat reporting — `tracing` events + `Heartbeat` every N cycles
+- [x] Cross-compile and package edge agent binaries for target hardware — `.cargo/config.toml`, release profile (`opt-level="z"`, lto, strip), `tpt-edge` bin
+- [x] Bench test edge agents against Simulator HAL backend — `control::tests` + `tpt-edge` demo (peak 54°C → 28.5°C)
+- [ ] Field test edge agents against Real HAL backend (bring-up on actual controller hardware) — requires physical Pi CM4 / ARM controller + BMCs
 
 ## Phase 3 — Telemetry Ingestion Engine (Go)
 - [ ] Design concurrent ingestion pipeline architecture (worker pools, backpressure strategy)

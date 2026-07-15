@@ -1,0 +1,19 @@
+[workspace]
+members = ["rust-edge", "ai-brain"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/TPT-Solutions/tpt-datacenter"
+homepage = "https://github.com/TPT-Solutions/tpt-datacenter"
+description = "Open-source, AI-driven physical plant controller for hyperscale data centers."
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+tracing = "0.1"
+tokio = { version = "1", features = ["full"] }

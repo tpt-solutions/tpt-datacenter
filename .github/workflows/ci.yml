@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust (build, lint, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Build
+        run: cargo build --workspace --verbose
+      - name: Test
+        run: cargo test --workspace --verbose
+
+  rust-real:
+    name: Rust (real-hardware backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-real-${{ hashFiles('**/Cargo.lock') }}
+      - name: Clippy (real feature)
+        run: cargo clippy -p rust-edge --features real --all-targets -- -D warnings
+      - name: Build (real feature)
+        run: cargo build -p rust-edge --features real --verbose
+      - name: Test (real feature)
+        run: cargo test -p rust-edge --features real --verbose
+
+  go:
+    name: Go (build, vet, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Build
+        run: go build ./...
+        working-directory: go-telemetry
+      - name: Vet
+        run: go vet ./...
+        working-directory: go-telemetry
+      - name: Test
+        run: go test ./...
+        working-directory: go-telemetry
+
+  license-headers:
+    name: SPDX license headers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check SPDX headers present in source files
+        run: |
+          missing=0
+          while IFS= read -r f; do
+            if ! grep -q "SPDX-License-Identifier" "$f"; then
+              echo "Missing SPDX-License-Identifier: $f"
+              missing=1
+            fi
+          done < <(grep -rl --include='*.rs' --include='*.go' --include='*.py' --include='*.ts' --include='*.js' .)
+          exit $missing

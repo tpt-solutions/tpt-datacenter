@@ -1,0 +1,22 @@
+[package]
+name = "ai-brain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Thermal AI Brain: reinforcement learning model (Rust/burn) for hotspot prediction and cooling optimization."
+keywords = ["reinforcement-learning", "thermal", "datacenter", "burn", "rl"]
+categories = ["science", "algorithms", "embedded"]
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+burn = { version = "0.13", features = ["std"] }
+# burn 0.13.2 relies on a bincode 2.0.0-rc.3 API (`decode_borrowed_from_slice`)
+# that was removed in the stable bincode 2.0 release; pin to keep it building.
+bincode = "=2.0.0-rc.3"
+
+[dev-dependencies]
