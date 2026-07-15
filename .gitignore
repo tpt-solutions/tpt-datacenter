@@ -1,0 +1,29 @@
+# Rust
+/target/
+**/target/
+Cargo.lock.bak
+
+# Go
+/bin/
+*.test
+*.out
+
+# Node / dashboard
+node_modules/
+dist/
+.next/
+.vite/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
