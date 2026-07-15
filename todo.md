@@ -43,28 +43,28 @@ Decisions locked in:
 - [ ] Field test edge agents against Real HAL backend (bring-up on actual controller hardware) — requires physical Pi CM4 / ARM controller + BMCs
 
 ## Phase 3 — Telemetry Ingestion Engine (Go)
-- [ ] Design concurrent ingestion pipeline architecture (worker pools, backpressure strategy)
-- [ ] Implement Redfish telemetry collector
-- [ ] Implement Modbus TCP telemetry collector
-- [ ] Implement IPMI telemetry collector
-- [ ] Define internal message schema/serialization (e.g., protobuf) for ingested data points
-- [ ] Implement batching/writer to time-series database
-- [ ] Load test ingestion throughput (target: millions of points/sec)
-- [ ] Implement ingestion pipeline observability (metrics, tracing, dead-letter handling)
+- [x] Design concurrent ingestion pipeline architecture (worker pools, backpressure strategy)
+- [x] Implement Redfish telemetry collector
+- [x] Implement Modbus TCP telemetry collector
+- [x] Implement IPMI telemetry collector
+- [x] Define internal message schema/serialization (e.g., protobuf) for ingested data points
+- [x] Implement batching/writer to time-series database
+- [x] Load test ingestion throughput (target: millions of points/sec)
+- [x] Implement ingestion pipeline observability (metrics, tracing, dead-letter handling)
 
 ## Phase 4 — Time-Series Storage
-- [ ] Stand up QuestDB instance (dev, staging, prod configs)
-- [ ] Define schema/table design for sensor time-series data
-- [ ] Implement retention/downsampling policy for long-term storage
-- [ ] Implement query layer/API for dashboard and AI brain consumption
-- [ ] Benchmark write/query performance at target scale
+- [x] Stand up QuestDB instance (dev, staging, prod configs)
+- [x] Define schema/table design for sensor time-series data
+- [x] Implement retention/downsampling policy for long-term storage
+- [x] Implement query layer/API for dashboard and AI brain consumption
+- [x] Benchmark write/query performance at target scale
 
 ## Phase 5 — Physical Topology Graph
-- [ ] Choose graph storage technology (graph DB vs in-memory graph library)
-- [ ] Define schema: racks, PDUs, cooling loops, cabling, power/data relationships
-- [ ] Implement ingestion/authoring tooling to build topology graph (manual + auto-discovery from telemetry)
-- [ ] Implement API to query physical relationships (e.g., "what cools this rack", "what feeds this PDU")
-- [ ] Integrate topology graph with Thermal AI Brain and dashboard visualization
+- [x] Choose graph storage technology (graph DB vs in-memory graph library)
+- [x] Define schema: racks, PDUs, cooling loops, cabling, power/data relationships
+- [x] Implement ingestion/authoring tooling to build topology graph (manual + auto-discovery from telemetry)
+- [x] Implement API to query physical relationships (e.g., "what cools this rack", "what feeds this PDU")
+- [x] Integrate topology graph with Thermal AI Brain and dashboard visualization
 
 ## Phase 6 — Thermal AI Brain (RL, Rust/burn)
 - [ ] Set up `ai-brain` crate using `burn` (choose backend: `wgpu` for portability, `tch`/CUDA optional for training speed)

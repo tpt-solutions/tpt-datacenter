@@ -2,5 +2,7 @@ module github.com/TPT-Solutions/tpt-datacenter/go-telemetry
 
 go 1.22
 
-// Phase 4 will add the QuestDB client dependency here, e.g.:
-//   require github.com/questdb/questdb-go <version>
+// Phase 3 telemetry ingestion engine. QuestDB is written natively over the
+// InfluxDB Line Protocol (ILP) on TCP port 9009, so no third-party client
+// dependency is required. A future move to the official QuestDB Go client
+// would be added here.

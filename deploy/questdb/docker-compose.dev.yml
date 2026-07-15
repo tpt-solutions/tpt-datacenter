@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2024 TPT Solutions
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# QuestDB — development instance.
+# Single node, all ports exposed on localhost, no auth, ephemeral volume.
+# Bring up with:  docker compose -f docker-compose.dev.yml up
+services:
+  questdb:
+    image: questdb/questdb:8.1.3
+    container_name: tpt-questdb-dev
+    ports:
+      - "8812:8812"   # Postgres wire (psql / JDBC)
+      - "9000:9000"   # Web console + REST API
+      - "9009:9009"   # InfluxDB Line Protocol (ILP) — used by go-telemetry
+    environment:
+      QDB_PG_USER: admin
+      QDB_PG_PASSWORD: quest
+      QDB_HTTP_MIN_NETWORK_PORT: "9000"
+    command: -f /etc/questdb/conf/questdb-dev.conf
+    volumes:
+      - ./conf/questdb-dev.conf:/etc/questdb/conf/questdb-dev.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10

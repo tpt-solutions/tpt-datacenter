@@ -1,0 +1,28 @@
+{
+  "nodes": [
+    { "id": "room-a", "kind": "room", "labels": { "name": "Hall A" } },
+    { "id": "ups-1", "kind": "ups", "labels": { "capacity_kwh": "500" } },
+    { "id": "pdu-1", "kind": "pdu", "labels": { "phase": "A" } },
+    { "id": "pdu-2", "kind": "pdu", "labels": { "phase": "B" } },
+    { "id": "rack-01", "kind": "rack", "labels": { "u": "42" } },
+    { "id": "rack-02", "kind": "rack", "labels": { "u": "42" } },
+    { "id": "loop-1", "kind": "cooling_loop", "labels": { "crie_kw": "200" } },
+    { "id": "loop-2", "kind": "cooling_loop", "labels": { "crie_kw": "200" } },
+    { "id": "srv-01", "kind": "server" },
+    { "id": "srv-02", "kind": "server" }
+  ],
+  "edges": [
+    { "from": "room-a", "to": "rack-01", "kind": "contains" },
+    { "from": "room-a", "to": "rack-02", "kind": "contains" },
+    { "from": "ups-1", "to": "pdu-1", "kind": "powers" },
+    { "from": "ups-1", "to": "pdu-2", "kind": "powers" },
+    { "from": "pdu-1", "to": "rack-01", "kind": "powers" },
+    { "from": "pdu-2", "to": "rack-02", "kind": "powers" },
+    { "from": "rack-01", "to": "srv-01", "kind": "powers" },
+    { "from": "rack-02", "to": "srv-02", "kind": "powers" },
+    { "from": "loop-1", "to": "rack-01", "kind": "cools" },
+    { "from": "loop-2", "to": "rack-02", "kind": "cools" },
+    { "from": "loop-1", "to": "rack-02", "kind": "feeds" },
+    { "from": "loop-2", "to": "rack-01", "kind": "feeds" }
+  ]
+}
