@@ -12,6 +12,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -30,6 +31,7 @@ func main() {
 		maintainLoop = flag.Duration("maintain-every", 0, "run maintenance on this interval (0 disables)")
 		rawKeep      = flag.String("raw-retention", "dateadd('d', -90, now())", "raw `readings` retention window")
 		rollupKeep   = flag.String("rollup-retention", "dateadd('y', -2, now())", "rollup retention window")
+		insecure     = flag.Bool("insecure-no-auth", false, "explicitly allow running without -token on a non-loopback address (dev only)")
 	)
 	flag.Parse()
 
@@ -75,6 +77,8 @@ func main() {
 		}()
 	}
 
+	requireAuthOrLoopback(*addr, *token, *insecure)
+
 	srv := questdb.NewServer(questdb.ServerConfig{
 		Addr:      *addr,
 		Client:    client,
@@ -98,4 +102,23 @@ func main() {
 		log.Printf("[api] shutdown error: %v", err)
 	}
 	log.Printf("[api] stopped")
+}
+
+// requireAuthOrLoopback refuses to start unauthenticated on a non-loopback
+// address: a missed -token flag or unset env var must fail closed, not
+// silently serve telemetry (and the ad-hoc SQL endpoint) unauthenticated to
+// anyone who can reach the port.
+func requireAuthOrLoopback(addr, token string, insecure bool) {
+	if token != "" || insecure {
+		return
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	if host == "127.0.0.1" || host == "::1" || host == "localhost" {
+		return
+	}
+	log.Fatalf("refusing to start: no -token set and -addr %q is not loopback-only; "+
+		"set a bearer token or pass -insecure-no-auth to explicitly allow unauthenticated access (dev only)", addr)
 }

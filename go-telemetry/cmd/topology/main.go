@@ -12,6 +12,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -28,8 +29,10 @@ func main() {
 		questdbURL = flag.String("questdb", "", "QuestDB REST URL for telemetry auto-discovery")
 		discover   = flag.Bool("discover", false, "enrich graph from the telemetry device registry on startup")
 		token      = flag.String("token", os.Getenv("TOPOLOGY_API_TOKEN"), "bearer token for all endpoints (empty = no auth)")
+		insecure   = flag.Bool("insecure-no-auth", false, "explicitly allow running without -token on a non-loopback address (dev only)")
 	)
 	flag.Parse()
+	requireAuthOrLoopback(*addr, *token, *insecure)
 
 	g := topology.NewGraph()
 	if *spec != "" {
@@ -71,4 +74,23 @@ func main() {
 		log.Printf("[topology] shutdown error: %v", err)
 	}
 	log.Printf("[topology] stopped")
+}
+
+// requireAuthOrLoopback refuses to start unauthenticated on a non-loopback
+// address: a missed -token flag or unset env var must fail closed, not
+// silently serve the facility topology unauthenticated to anyone who can
+// reach the port.
+func requireAuthOrLoopback(addr, token string, insecure bool) {
+	if token != "" || insecure {
+		return
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	if host == "127.0.0.1" || host == "::1" || host == "localhost" {
+		return
+	}
+	log.Fatalf("refusing to start: no -token set and -addr %q is not loopback-only; "+
+		"set a bearer token or pass -insecure-no-auth to explicitly allow unauthenticated access (dev only)", addr)
 }

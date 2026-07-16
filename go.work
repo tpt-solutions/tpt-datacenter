@@ -1,6 +1,7 @@
-go 1.22
+go 1.23
 
 use (
-	./go-telemetry
 	./api
+	./dashboard
+	./go-telemetry
 )

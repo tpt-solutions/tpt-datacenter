@@ -21,18 +21,16 @@
 //! [`BrainModel`](crate::model::BrainModel) (CPU, no autodiff) that the rest
 //! of the stack consumes through the [`Policy`](crate::model::Policy) trait.
 
-use burn::backend::{
-    autodiff::Autodiff,
-    ndarray::{NdArray, NdArrayDevice},
-    AutodiffBackend,
-};
-use burn::module::Param;
+use burn::backend::autodiff::Autodiff;
+use burn::backend::ndarray::{NdArray, NdArrayDevice};
+use burn::module::{Module, Param};
 use burn::nn::{Linear, LinearConfig};
-use burn::optim::{Optimizer, Sgd};
+use burn::optim::{Optimizer, SgdConfig};
 use burn::tensor::activation::relu;
-use burn::tensor::{backend::Backend, Data, Distribution, Tensor};
+use burn::tensor::backend::Backend;
+use burn::tensor::{Data, Distribution, Tensor};
 
-use crate::model::{Action, BrainModel, BrainNet, State};
+use crate::model::{Action, BrainModel, BrainNet, HotspotNet, State};
 
 /// Training backend: CPU NdArray with automatic differentiation.
 pub type RLBackend = Autodiff<NdArray>;
@@ -63,7 +61,7 @@ pub struct ActorNet<B: burn::tensor::backend::Backend> {
     log_std: Tensor<B, 1>,
 }
 
-impl<B: burn::tensor::backend::Backend> ActorNet<B> {
+impl<B: burn::tensor::backend::Backend<FloatElem = f32>> ActorNet<B> {
     /// Build a fresh (random) actor on `device`.
     pub fn new(device: &B::Device) -> Self {
         ActorNet {
@@ -89,7 +87,7 @@ pub struct ValueNet<B: burn::tensor::backend::Backend> {
     lin2: Linear<B>,
 }
 
-impl<B: burn::tensor::backend::Backend> ValueNet<B> {
+impl<B: burn::tensor::backend::Backend<FloatElem = f32>> ValueNet<B> {
     /// Build a fresh (random) critic on `device`.
     pub fn new(device: &B::Device) -> Self {
         ValueNet {
@@ -109,6 +107,7 @@ impl<B: burn::tensor::backend::Backend> ValueNet<B> {
 #[derive(Debug, Clone)]
 struct Step {
     state: State,
+    #[allow(dead_code)]
     action: Action,
     reward: f32,
 }
@@ -130,9 +129,10 @@ impl GaussianActor {
     }
 
     /// Squashed mean action (valve, fan) in [0,1] for a single state.
+    #[allow(dead_code)]
     fn mean_action(&self, s: &State) -> (f32, f32) {
         let input = Tensor::<RLBackend, 2>::from_data(Data::from([s.to_array()]), &self.device);
-        let m = self.net.mean(input).reshape::<2, _>([ACTION_DIM]);
+        let m = self.net.mean(input);
         let v = m.to_data().convert::<f32>().value;
         (v[0], v[1])
     }
@@ -157,7 +157,7 @@ impl GaussianActor {
         let two_pi = 2.0 * std::f32::consts::PI;
         // log N(a; mean, std) = -0.5 * ((a-mean)^2 / var + log(2π var))
         let diff = action - mean;
-        let inner = diff.powf_scalar(2.0).div(var) + var.mul_scalar(two_pi).log();
+        let inner = diff.powf_scalar(2.0).div(var.clone()) + var.mul_scalar(two_pi).log();
         let logp = inner.neg().mul_scalar(0.5);
         logp.sum_dim(1) // [1, 1]
     }
@@ -181,8 +181,8 @@ pub fn train_rl(
     let mut actor = GaussianActor::new(&device);
     let mut critic = ValueNet::<RLBackend>::new(&device);
 
-    let mut actor_opt = Sgd::new();
-    let mut critic_opt = Sgd::new();
+    let mut actor_opt = SgdConfig::new().init();
+    let mut critic_opt = SgdConfig::new().init();
     let gamma = 0.99f32;
 
     for ep in 0..episodes {
@@ -191,7 +191,7 @@ pub fn train_rl(
         for _ in 0..horizon {
             let s = world.observe(setpoint_c);
             let (action_t, _mean_t) = actor.sample(&s);
-            let a = action_t.clamp_scalar(0.0, 1.0);
+            let a = action_t.clamp(0.0, 1.0);
             let v = a.to_data().convert::<f32>().value;
             let act = Action {
                 valve: v[0].clamp(0.0, 1.0),
@@ -216,14 +216,14 @@ pub fn train_rl(
         }
 
         // --- Actor + critic forward/backward over the episode ------------
-        let mut actor_loss = Tensor::<RLBackend, 2>::zeros(&device, [1, 1]);
-        let mut critic_loss = Tensor::<RLBackend, 2>::zeros(&device, [1, 1]);
+        let mut actor_loss = Tensor::<RLBackend, 2>::zeros([1, 1], &device);
+        let mut critic_loss = Tensor::<RLBackend, 2>::zeros([1, 1], &device);
 
         for (t, step) in steps.iter().enumerate() {
             let obs = Tensor::<RLBackend, 2>::from_data(Data::from([step.state.to_array()]), &device);
             let value = critic.forward(obs.clone()); // [1, 1]
             let (action_t, mean_t) = actor.sample(&step.state);
-            let a = action_t.clamp_scalar(0.0, 1.0);
+            let a = action_t.clamp(0.0, 1.0);
             let logp = actor.log_prob(a, mean_t); // [1, 1]
 
             let adv = returns[t] - value.clone().to_data().convert::<f32>().value[0];
@@ -240,15 +240,15 @@ pub fn train_rl(
 
         // --- Backward + SGD update ---------------------------------------
         let actor_grads = burn::optim::GradientsParams::from_grads(
-            RLBackend::backward(actor_loss),
+            actor_loss.backward(),
             &actor.net,
         );
         let critic_grads = burn::optim::GradientsParams::from_grads(
-            RLBackend::backward(critic_loss),
+            critic_loss.backward(),
             &critic,
         );
-        actor.net = actor_opt.step(lr, actor.net, actor_grads);
-        critic = critic_opt.step(lr * 0.5, critic, critic_grads);
+        actor.net = actor_opt.step(lr as f64, actor.net, actor_grads);
+        critic = critic_opt.step((lr * 0.5) as f64, critic, critic_grads);
 
         if ep % 10 == 0 || ep == episodes - 1 {
             let mean_ret: f32 = returns.iter().sum::<f32>() / returns.len() as f32;
@@ -263,23 +263,140 @@ pub fn train_rl(
 /// actor's *mean* action, by copying the three linear layers' weights into a
 /// fresh [`BrainNet`] on the inference backend.
 fn export_actor_to_brain(actor: ActorNet<RLBackend>, _device: &NdArrayDevice) -> BrainModel {
-    let inner = <RLBackend as AutodiffBackend>::inner;
     let device = NdArrayDevice::default();
     let mut net = BrainNet::<InfBackend>::new(&device);
 
-    let l1w = inner(actor.lin1.weight.val());
-    let l1b = inner(actor.lin1.bias.val());
-    let l2w = inner(actor.lin2.weight.val());
-    let l2b = inner(actor.lin2.bias.val());
-    let l3w = inner(actor.lin3.weight.val());
-    let l3b = inner(actor.lin3.bias.val());
+    let l1w = Tensor::<NdArray, 2>::from_data(actor.lin1.weight.val().to_data().convert::<f32>(), &device);
+    let l1b = Tensor::<NdArray, 1>::from_data(actor.lin1.bias.expect("bias present").val().to_data().convert::<f32>(), &device);
+    let l2w = Tensor::<NdArray, 2>::from_data(actor.lin2.weight.val().to_data().convert::<f32>(), &device);
+    let l2b = Tensor::<NdArray, 1>::from_data(actor.lin2.bias.expect("bias present").val().to_data().convert::<f32>(), &device);
+    let l3w = Tensor::<NdArray, 2>::from_data(actor.lin3.weight.val().to_data().convert::<f32>(), &device);
+    let l3b = Tensor::<NdArray, 1>::from_data(actor.lin3.bias.expect("bias present").val().to_data().convert::<f32>(), &device);
 
     net.lin1.weight = Param::from_tensor(l1w);
-    net.lin1.bias = Param::from_tensor(l1b);
+    net.lin1.bias = Some(Param::from_tensor(l1b));
     net.lin2.weight = Param::from_tensor(l2w);
-    net.lin2.bias = Param::from_tensor(l2b);
+    net.lin2.bias = Some(Param::from_tensor(l2b));
     net.lin3.weight = Param::from_tensor(l3w);
-    net.lin3.bias = Param::from_tensor(l3b);
+    net.lin3.bias = Some(Param::from_tensor(l3b));
 
     BrainModel::from_net(net)
+}
+
+/// A single labelled hotspot example: a state and whether the rack later
+/// thermally violated the setpoint (`label` = 1.0) or not (0.0).
+#[derive(Debug, Clone)]
+pub struct HotspotSample {
+    pub state: State,
+    pub label: f32,
+}
+
+/// Train the [`HotspotNet`] head in a supervised fashion (binary
+/// cross-entropy) and return a [`BrainModel`] whose
+/// [`predict_hotspot`](crate::model::BrainModel::predict_hotspot) uses it.
+///
+/// `base` is a control net (e.g. from [`train_rl`]) carried over so the
+/// returned model still issues cooling actions; only the hotspot head is
+/// trained here.
+pub fn train_hotspot(
+    base: BrainNet<InfBackend>,
+    samples: &[HotspotSample],
+    epochs: usize,
+    lr: f32,
+) -> BrainModel {
+    let device = NdArrayDevice::default();
+    let mut head = HotspotNet::<RLBackend>::new(&device);
+    let mut opt = SgdConfig::new().init();
+
+    for ep in 0..epochs {
+        let mut total_loss = 0.0f32;
+        for s in samples {
+            let input = Tensor::<RLBackend, 2>::from_data(Data::from([s.state.to_array()]), &device);
+            let logit = head.forward(input); // [1, 1]
+            let target = Tensor::<RLBackend, 2>::from_data(Data::from([[s.label]]), &device);
+            // Binary cross-entropy with logits:
+            // L = max(logit,0) - logit*target + log(1+exp(-|logit|))
+            let z = logit.clone();
+            let loss = z.clone().clamp(0.0, f32::MAX)
+                - z.clone() * target.clone()
+                + (z.clone().neg().exp().add_scalar(1.0)).log();
+            total_loss += loss.to_data().convert::<f32>().value[0];
+
+            let grads = burn::optim::GradientsParams::from_grads(loss.backward(), &head);
+            head = opt.step(lr as f64, head, grads);
+        }
+        if ep % 10 == 0 || ep == epochs - 1 {
+            tracing::debug!(
+                "hotspot ep {ep}: mean_loss {:.4}",
+                total_loss / samples.len().max(1) as f32
+            );
+        }
+    }
+
+    // Export the trained head to the inference backend.
+    let device = NdArrayDevice::default();
+    let mut out_head = HotspotNet::<InfBackend>::new(&device);
+    out_head.lin1.weight = Param::from_tensor(Tensor::<NdArray, 2>::from_data(
+        head.lin1.weight.val().to_data().convert::<f32>(),
+        &device,
+    ));
+    out_head.lin1.bias = Some(Param::from_tensor(Tensor::<NdArray, 1>::from_data(
+        head.lin1.bias.expect("bias present").val().to_data().convert::<f32>(),
+        &device,
+    )));
+    out_head.lin2.weight = Param::from_tensor(Tensor::<NdArray, 2>::from_data(
+        head.lin2.weight.val().to_data().convert::<f32>(),
+        &device,
+    ));
+    out_head.lin2.bias = Some(Param::from_tensor(Tensor::<NdArray, 1>::from_data(
+        head.lin2.bias.expect("bias present").val().to_data().convert::<f32>(),
+        &device,
+    )));
+
+    BrainModel::from_nets(base, out_head)
+}
+
+/// Convenience: train the full brain (control + hotspot) from a world.
+///
+/// Returns a [`BrainModel`] ready for [`serve::BrainServer`].
+pub fn train_brain(
+    world: &mut dyn crate::train::SimWorld,
+    setpoint_c: f32,
+    dt_s: f32,
+    horizon: usize,
+    episodes: usize,
+    lr: f32,
+) -> BrainModel {
+    let control = train_rl(world, setpoint_c, dt_s, horizon, episodes, lr);
+    // Re-train a hotspot head on analytically-derived labels. We keep the
+    // control net and only learn the hotspot head.
+    let base = control.net().clone();
+    let samples = simple_hotspot_labels(setpoint_c);
+    train_hotspot(base, &samples, 40, 0.05)
+}
+
+/// Deterministic hotspot labels for the demo: states with a large positive
+/// temperature error (already hot) are labelled as future-violation risks.
+fn simple_hotspot_labels(setpoint_c: f32) -> Vec<HotspotSample> {
+    let mut v = Vec::new();
+    for err_i in 0..20 {
+        let err = -1.0 + err_i as f32 * 0.1; // -1.0 .. +1.0
+        let s = State {
+            temp_error: err,
+            inlet_temp: 0.4,
+            it_load: 0.7,
+            ups_soc: 0.8,
+            valve: 0.5,
+            fan: 0.5,
+            coolant_temp: 0.5,
+            bias: 1.0,
+        };
+        // Positive label when the implied temperature is at/above setpoint.
+        let temp = setpoint_c + err * 10.0;
+        v.push(HotspotSample {
+            state: s,
+            label: if temp >= setpoint_c { 1.0 } else { 0.0 },
+        });
+    }
+    v
 }

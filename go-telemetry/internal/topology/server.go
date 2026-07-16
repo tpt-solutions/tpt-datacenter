@@ -5,6 +5,7 @@ package topology
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -48,12 +49,14 @@ func (s *Server) auth(next http.Handler) http.Handler {
 	if s.authToken == "" {
 		return next
 	}
+	want := []byte(s.authToken)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") != s.authToken {
+		got := []byte(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		if subtle.ConstantTimeCompare(got, want) != 1 {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

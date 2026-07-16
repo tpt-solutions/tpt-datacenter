@@ -22,5 +22,9 @@ pub mod hal;
 #[cfg(not(feature = "no_std"))]
 pub mod control;
 
+/// Secure firmware update verification (Ed25519 signed updates, Phase 10).
+/// Available in both std and `no_std` (alloc) builds.
+pub mod firmware;
+
 #[cfg(feature = "no_std")]
 extern crate alloc;

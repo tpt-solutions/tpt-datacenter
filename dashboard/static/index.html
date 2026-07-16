@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TPT DataCenter — Facility Control</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">TPT&nbsp;DataCenter <span class="sub">facility control</span></div>
+    <nav>
+      <a data-view="overview" class="active" href="#overview">Overview</a>
+      <a data-view="heatmap" href="#heatmap">Thermal</a>
+      <a data-view="topology" href="#topology">Topology</a>
+      <a data-view="control" href="#control">Control</a>
+      <a data-view="alerts" href="#alerts">Alerts</a>
+    </nav>
+    <div class="auth">
+      <input id="token" type="password" placeholder="API token (optional)" autocomplete="off" />
+      <span id="grid-badge" class="badge none" title="grid stress">grid: —</span>
+    </div>
+  </header>
+
+  <div id="authority" class="authority auto" title="Who is in command of the facility right now">
+    AI / AUTO CONTROL
+  </div>
+
+  <main>
+    <section id="view-overview" class="view active">
+      <h2>Live Telemetry</h2>
+      <div id="telemetry-cards" class="cards"></div>
+      <h3>Power &amp; Cooling (last hour)</h3>
+      <canvas id="trend" width="900" height="260"></canvas>
+    </section>
+
+    <section id="view-heatmap" class="view">
+      <h2>Thermal Heatmap</h2>
+      <p class="hint">Per-rack inlet/outlet temperatures. Color scales from green (&lt;25&deg;C) to red (&gt;45&deg;C).</p>
+      <div id="heatmap" class="heatmap"></div>
+    </section>
+
+    <section id="view-topology" class="view">
+      <h2>Physical Topology</h2>
+      <p class="hint">Powered-by / cooled-by relationships (read-only, from the topology API).</p>
+      <svg id="topo" width="900" height="460"></svg>
+    </section>
+
+    <section id="view-control" class="view">
+      <h2>Manual Control Override</h2>
+      <p class="hint">Override actuator setpoints. Each action is clamped to the safety envelope and
+        written to the audit log. Extreme valve/fan setpoints may require two-person acknowledgement.</p>
+      <div id="control-list" class="cards"></div>
+    </section>
+
+    <section id="view-alerts" class="view">
+      <h2>Alerts &amp; Audit</h2>
+      <div id="alerts-list"></div>
+      <h3>Recent Audit Entries</h3>
+      <div id="audit-list"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

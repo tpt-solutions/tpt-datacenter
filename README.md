@@ -22,6 +22,18 @@ A monorepo was chosen over polyrepo because the components share protobuf
 schemas and a common Simulator backend, and the project is early-stage with a
 single release cadence — see todo.md Phase 0.
 
+## Documentation
+
+| Doc | What it covers |
+| --- | --- |
+| [docs/architecture.md](docs/architecture.md) | System diagram, component responsibilities, data flow, safety model. |
+| [docs/getting-started.md](docs/getting-started.md) | Run the full stack locally in **Simulator mode** (no hardware). |
+| [docs/hardware-bringup.md](docs/hardware-bringup.md) | Set up **Real mode** (PDU/UPS/cooling/compute) on actual controllers. |
+| [docs/real-hardware-bringup.md](docs/real-hardware-bringup.md) | Gated engineering test plan / checklist for real-hardware bring-up. |
+| [docs/api-reference.md](docs/api-reference.md) | HTTP + gRPC API contract for all services. |
+| [docs/security/threat-model.md](docs/security/threat-model.md) | Threat model for the Redfish/Modbus/IPMI surface. |
+| [docs/security/no-backdoors.md](docs/security/no-backdoors.md) | Reproducible builds + signed-firmware verifiability story. |
+
 ## License
 
 TPT DataCenter is dual-licensed under either of:

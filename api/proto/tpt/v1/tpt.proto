@@ -1,0 +1,231 @@
+// SPDX-FileCopyrightText: 2024 TPT Solutions
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+syntax = "proto3";
+
+// Package tpt.v1 — the TPT DataCenter core platform contract (todo.md
+// Phase 8). It ties together the edge control surface, the hardware management
+// API, the telemetry query path, and the grid-stress signal so a single
+// orchestration service can route commands, enforce policy, and audit every
+// action.
+//
+// NOTE: this proto is the schema of record. The Go message types are generated
+// into api/internal/orchestration/pb, but the gRPC *service* stubs are not yet
+// implemented — the running services are plain HTTP/JSON (see docs/api-reference.md).
+// The proto is kept in sync as the documented contract for a future gRPC transport.
+//
+// Auth model: every mutating RPC expects a valid Bearer token in the
+// `authorization` request header (mapped by the gateway to the `operator`
+// field). Read RPCs under /telemetry and /grid are bearer-optional per
+// deployment.
+package tpt.v1;
+
+option go_package = "github.com/TPT-Solutions/tpt-datacenter/api/internal/orchestration/pb;tptv1";
+
+// ---------------------------------------------------------------------------
+// Common types
+// ---------------------------------------------------------------------------
+
+// DeviceKind mirrors rust_edge::hal::types::DeviceKind.
+enum DeviceKind {
+  DEVICE_KIND_UNSPECIFIED = 0;
+  RACK = 1;
+  PDU = 2;
+  UPS = 3;
+  COOLING_LOOP = 4;
+  SERVER = 5;
+}
+
+// ActuatorCommand mirrors the control override channels.
+enum Command {
+  COMMAND_UNSPECIFIED = 0;
+  VALVE = 1;        // cooling valve position, 0..100 % open
+  FAN = 2;          // cooling fan speed, 0..100 % of max
+  OUTLET = 3;       // PDU outlet on/off
+  DISCHARGE_LIMIT = 4; // UPS max discharge rate, 0..100 % of capacity
+}
+
+// Mode describes how a device is currently driven.
+enum Mode {
+  MODE_UNSPECIFIED = 0;
+  AUTO = 1;   // edge supervisor / AI brain in control
+  MANUAL = 2; // operator override active
+  SAFE = 3;   // latched into fail-safe state
+}
+
+// GridStressLevel mirrors hardware.GridStressLevel.
+enum GridStressLevel {
+  GRID_STRESS_UNSPECIFIED = 0;
+  NONE = 1;
+  MILD = 2;
+  HIGH = 3;
+  CRITICAL = 4;
+}
+
+message ActuatorState {
+  string device = 1;
+  double valve = 2;
+  double fan = 3;
+  bool outlet = 4;
+  double discharge_limit = 5;
+  Mode mode = 6;
+  bool latched_safe = 7;
+  string reason = 8;
+  string operator = 9;
+  int64 updated_at_unix = 10;
+}
+
+message AuditEntry {
+  string id = 1;
+  int64 ts_unix = 2;
+  string device = 3;
+  Command command = 4;
+  string requested = 5;   // JSON-encoded requested value
+  string applied = 6;     // JSON-encoded applied (post-clamp) value
+  bool clamped = 7;
+  string operator = 8;
+  string reason = 9;
+  string note = 10;
+}
+
+message GridStressSignal {
+  GridStressLevel level = 1;
+  double score = 2;       // normalized 0..1 magnitude
+  string source = 3;
+  int64 observed_at_unix = 4;
+  string note = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Control service (manual override + audit) — todo.md Phase 8
+// ---------------------------------------------------------------------------
+
+service ControlService {
+  rpc ListDevices(Empty) returns (ListDevicesResponse);
+  rpc GetState(GetStateRequest) returns (ActuatorState);
+  rpc Override(OverrideRequest) returns (OverrideResponse);
+  rpc Reset(ResetRequest) returns (ActuatorState);
+  rpc LatchSafe(LatchRequest) returns (ActuatorState);
+  rpc Audit(AuditRequest) returns (AuditResponse);
+}
+
+message Empty {}
+
+message ListDevicesResponse { repeated ActuatorState devices = 1; }
+
+message GetStateRequest { string device = 1; }
+
+message OverrideRequest {
+  string device = 1;
+  Command command = 2;
+  string value = 3; // JSON-encoded (number or bool)
+  string operator = 4;
+  string reason = 5;
+}
+message OverrideResponse {
+  string status = 1;
+  bool clamped = 2;
+  ActuatorState state = 3;
+  string message = 4;
+}
+
+message ResetRequest { string device = 1; string operator = 2; string reason = 3; }
+message LatchRequest { string device = 1; string operator = 2; string reason = 3; }
+
+message AuditRequest { int32 limit = 1; }
+message AuditResponse { repeated AuditEntry entries = 1; }
+
+// ---------------------------------------------------------------------------
+// Hardware service (compute server mgmt) — todo.md Phase 7
+// ---------------------------------------------------------------------------
+
+service HardwareService {
+  rpc SetPower(SetPowerRequest) returns (Empty);
+  rpc SetBoot(SetBootRequest) returns (Empty);
+  rpc SetPowerCap(SetPowerCapRequest) returns (Empty);
+  rpc ResolveThrottle(ResolveThrottleRequest) returns (ResolveThrottleResponse);
+}
+
+message SetPowerRequest {
+  string server = 1;
+  string system_id = 2;
+  string action = 3; // On/Off/GracefulShutdown/GracefulRestart/ForceOff/ForceRestart/PushPowerButton
+  string via = 4;    // "redfish" | "ipmi" | "" (auto)
+  string operator = 5;
+  string note = 6;
+}
+message SetBootRequest {
+  string server = 1;
+  string system_id = 2;
+  string target = 3; // Pxe/Hdd/Bios/...
+  string operator = 4;
+  string note = 5;
+}
+message SetPowerCapRequest {
+  string server = 1;
+  string chassis_id = 2;
+  double cap_w = 3;
+  string operator = 4;
+  string note = 5;
+}
+message ResolveThrottleRequest { repeated string servers = 1; }
+message ResolveThrottleResponse {
+  GridStressSignal signal = 1;
+  // ThrottleAction encoded inline (server_id, level, cap_w, shutdown).
+  repeated ThrottleAction actions = 2;
+}
+message ThrottleAction {
+  string server_id = 1;
+  GridStressLevel level = 2;
+  double cap_w = 3;
+  bool shutdown = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Grid service (grid-stress signal) — todo.md Phase 7
+// ---------------------------------------------------------------------------
+
+service GridService {
+  rpc Current(Empty) returns (GridStressSignal);
+}
+
+// ---------------------------------------------------------------------------
+// Orchestration service (command routing + policy enforcement) — Phase 8
+// ---------------------------------------------------------------------------
+
+service Orchestrator {
+  // Submit routes an actuation intent through policy enforcement to the
+  // responsible edge HAL agent. The orchestrator translates the command into
+  // the rust_edge::hal::types::ControlCommand envelope and forwards it to the
+  // target device's supervisor, recording an audit entry.
+  rpc Submit(SubmitRequest) returns (SubmitResponse);
+  // Policy returns the currently enforced safety/policy envelope.
+  rpc Policy(Empty) returns (PolicyResponse);
+}
+
+message SubmitRequest {
+  string device = 1;
+  Command command = 2;
+  string value = 3; // JSON-encoded
+  string operator = 4;
+  string reason = 5;
+  // source identifies the caller (operator, ai_brain, hardware_api).
+  string source = 6;
+}
+message SubmitResponse {
+  bool accepted = 1;
+  bool clamped = 2;
+  string reason = 3; // rejection/clamp explanation
+  ActuatorState state = 4;
+}
+
+message PolicyResponse {
+  double crit_air_temp_c = 1;
+  double warn_air_temp_c = 2;
+  double min_air_temp_c = 3;
+  double min_valve = 4; double max_valve = 5;
+  double min_fan = 6;   double max_fan = 7;
+  double min_discharge = 8; double max_discharge = 9;
+  // require_two_person is true when manual overrides need a second ack.
+  bool require_two_person = 10;
+}

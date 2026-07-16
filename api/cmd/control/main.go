@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -42,8 +43,10 @@ func main() {
 		token     = flag.String("token", os.Getenv("CONTROL_API_TOKEN"), "bearer token required on all endpoints (empty = no auth, dev only)")
 		cors      = flag.String("cors", os.Getenv("CONTROL_CORS_ORIGIN"), "allowed CORS origin ('*' to allow any; empty disables)")
 		specPath  = flag.String("spec", "deploy/topology/facility.json", "facility topology spec used to seed devices")
+		insecure  = flag.Bool("insecure-no-auth", false, "explicitly allow running without -token on a non-loopback address (dev only)")
 	)
 	flag.Parse()
+	requireAuthOrLoopback(*addr, *token, *insecure)
 
 	store := control.NewStore(control.DefaultLimits())
 	if err := seed(store, *specPath); err != nil {
@@ -101,4 +104,24 @@ func seed(store *control.Store, path string) error {
 	}
 	log.Printf("[control] seeded %d devices from %s", count, path)
 	return nil
+}
+
+// requireAuthOrLoopback refuses to start unauthenticated on a non-loopback
+// address: an empty token disabling auth is a reasonable local-dev default,
+// but only when nothing outside the host can reach it. This endpoint can
+// power-cycle and override physical equipment, so a missed -token flag or
+// unset env var must fail closed rather than silently serve unauthenticated.
+func requireAuthOrLoopback(addr, token string, insecure bool) {
+	if token != "" || insecure {
+		return
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	if host == "127.0.0.1" || host == "::1" || host == "localhost" {
+		return
+	}
+	log.Fatalf("refusing to start: no -token set and -addr %q is not loopback-only; "+
+		"set a bearer token or pass -insecure-no-auth to explicitly allow unauthenticated access (dev only)", addr)
 }

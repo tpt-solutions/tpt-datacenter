@@ -1,0 +1,127 @@
+# SPDX-FileCopyrightText: 2024 TPT Solutions
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# TPT DataCenter — full simulator stack in one command.
+#
+#   docker compose up --build
+#
+# Brings up QuestDB, the Go telemetry/topology/control/hardware/orchestrator
+# services, the Rust edge demo (Simulator HAL), and the web dashboard behind a
+# single origin on http://localhost:8085.
+#
+# Auth is disabled for local exploration only (-insecure-no-auth); never run
+# this compose as-is in any shared or production network.
+
+services:
+  questdb:
+    image: questdb/questdb:8.1.3
+    container_name: tpt-questdb
+    ports:
+      - "8812:8812"
+      - "9000:9000"
+      - "9009:9009"
+    environment:
+      QDB_PG_USER: admin
+      QDB_PG_PASSWORD: quest
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  telemetry:
+    build:
+      context: .
+      dockerfile: deploy/docker/go.Dockerfile
+      args:
+        SERVICE: go-telemetry/cmd/api
+    container_name: tpt-telemetry
+    command: ["-addr", ":8080", "-questdb", "http://questdb:9000"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      questdb:
+        condition: service_healthy
+
+  topology:
+    build:
+      context: .
+      dockerfile: deploy/docker/go.Dockerfile
+      args:
+        SERVICE: go-telemetry/cmd/topology
+    container_name: tpt-topology
+    command: ["-addr", ":8081", "-spec", "/app/deploy/topology/facility.json"]
+    ports:
+      - "8081:8081"
+
+  control:
+    build:
+      context: .
+      dockerfile: deploy/docker/go.Dockerfile
+      args:
+        SERVICE: api/cmd/control
+    container_name: tpt-control
+    command: ["-addr", ":8082", "-spec", "/app/deploy/topology/facility.json", "-insecure-no-auth"]
+    ports:
+      - "8082:8082"
+
+  hardware:
+    build:
+      context: .
+      dockerfile: deploy/docker/go.Dockerfile
+      args:
+        SERVICE: api/cmd/hardware
+    container_name: tpt-hardware
+    command: ["-addr", ":8083", "-insecure-no-auth"]
+    ports:
+      - "8083:8083"
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: deploy/docker/go.Dockerfile
+      args:
+        SERVICE: api/cmd/orchestrator
+    container_name: tpt-orchestrator
+    command: ["-addr", ":8084", "-insecure-no-auth"]
+    ports:
+      - "8084:8084"
+
+  edge:
+    build:
+      context: .
+      dockerfile: deploy/docker/rust.Dockerfile
+    container_name: tpt-edge
+    # Simulator HAL demo; observe peak temp settle toward the setpoint.
+    command: ["--bin", "tpt-edge"]
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: deploy/docker/go.Dockerfile
+      args:
+        SERVICE: dashboard/cmd/dashboard
+    container_name: tpt-dashboard
+    command:
+      - "-addr"
+      - ":8085"
+      - "-static"
+      - "/app/dashboard/static"
+      - "-control"
+      - "http://control:8082"
+      - "-hardware"
+      - "http://hardware:8083"
+      - "-telemetry"
+      - "http://telemetry:8080"
+      - "-topology"
+      - "http://topology:8081"
+      - "-orchestrator"
+      - "http://orchestrator:8084"
+    ports:
+      - "8085:8085"
+    depends_on:
+      - control
+      - hardware
+      - telemetry
+      - topology
+      - orchestrator

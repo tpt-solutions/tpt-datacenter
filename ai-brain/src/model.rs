@@ -95,9 +95,9 @@ pub trait Policy {
 /// A small feed-forward network: 8 -> 16 -> 16 -> 2 (valve, fan).
 #[derive(Module, Debug)]
 pub struct BrainNet<B: burn::tensor::backend::Backend> {
-    lin1: Linear<B>,
-    lin2: Linear<B>,
-    lin3: Linear<B>,
+    pub lin1: Linear<B>,
+    pub lin2: Linear<B>,
+    pub lin3: Linear<B>,
 }
 
 impl<B: burn::tensor::backend::Backend> BrainNet<B> {
@@ -117,9 +117,38 @@ impl<B: burn::tensor::backend::Backend> BrainNet<B> {
     }
 }
 
+/// Hotspot-prediction head: 8 -> 16 -> 1, squashed to a 0..1 risk score.
+///
+/// Trained in a supervised fashion (see [`crate::rl::train_hotspot`]) from
+/// labelled (state, will-exceed-setpoint) transitions, it lets the dashboard
+/// and edge flag an impending thermal violation *before* it happens, so the
+/// cooling policy can pre-empt it (todo.md Phase 6.6).
+#[derive(Module, Debug)]
+pub struct HotspotNet<B: burn::tensor::backend::Backend> {
+    pub lin1: Linear<B>,
+    pub lin2: Linear<B>,
+}
+
+impl<B: burn::tensor::backend::Backend> HotspotNet<B> {
+    /// Build an untrained hotspot head on `device`.
+    pub fn new(device: &B::Device) -> Self {
+        HotspotNet {
+            lin1: LinearConfig::new(8, 16).with_bias(true).init(device),
+            lin2: LinearConfig::new(16, 1).with_bias(true).init(device),
+        }
+    }
+
+    /// Forward pass; returns a `[batch, 1]` tensor of raw logits.
+    pub fn forward(&self, x: Tensor<B, 2>) -> Tensor<B, 2> {
+        let x = relu(self.lin1.forward(x));
+        self.lin2.forward(x)
+    }
+}
+
 /// Inference wrapper around [`BrainNet`] on the CPU backend.
 pub struct BrainModel {
     net: BrainNet<BrainBackend>,
+    hotspot: HotspotNet<BrainBackend>,
     device: NdArrayDevice,
 }
 
@@ -131,15 +160,27 @@ impl BrainModel {
         let device = NdArrayDevice::default();
         BrainModel {
             net: BrainNet::new(&device),
+            hotspot: HotspotNet::new(&device),
             device,
         }
     }
 
-    /// Wrap an already-constructed inference network (e.g. one whose weights
+    /// Wrap already-constructed inference networks (e.g. ones whose weights
     /// were produced by the RL trainer in [`crate::rl`]).
     pub fn from_net(net: BrainNet<BrainBackend>) -> Self {
+        let device = NdArrayDevice::default();
         BrainModel {
             net,
+            hotspot: HotspotNet::new(&device),
+            device,
+        }
+    }
+
+    /// Build from both a control net and a hotspot net (used after training).
+    pub fn from_nets(net: BrainNet<BrainBackend>, hotspot: HotspotNet<BrainBackend>) -> Self {
+        BrainModel {
+            net,
+            hotspot,
             device: NdArrayDevice::default(),
         }
     }
@@ -153,6 +194,22 @@ impl BrainModel {
         // saturate the raw logits into 0..1 via sigmoid for a sane default.
         let sig = |x: f32| 1.0 / (1.0 + (-x).exp());
         (sig(v[0]), sig(v[1]))
+    }
+
+    /// Predict the probability (0..1) that this rack will thermally violate the
+    /// setpoint in the near future, given the current state.
+    pub fn predict_hotspot(&self, state: &State) -> f32 {
+        let input = Data::<f32, 2>::from([state.to_array()]);
+        let x = Tensor::<BrainBackend, 2>::from_data(input, &self.device);
+        let out = self.hotspot.forward(x);
+        let v = out.to_data().convert::<f32>().value;
+        let sig = |x: f32| 1.0 / (1.0 + (-x).exp());
+        sig(v[0]).clamp(0.0, 1.0)
+    }
+
+    /// Borrow the underlying control network (e.g. to retrain a hotspot head).
+    pub fn net(&self) -> &BrainNet<BrainBackend> {
+        &self.net
     }
 }
 
