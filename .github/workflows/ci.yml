@@ -88,12 +88,24 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.23"
-      - name: Build (go.work)
+      - name: Build (api)
         run: go build ./...
-      - name: Vet
+        working-directory: api
+      - name: Vet (api)
         run: go vet ./...
-      - name: Test
+        working-directory: api
+      - name: Test (api)
         run: go test ./...
+        working-directory: api
+      - name: Build (dashboard)
+        run: go build ./...
+        working-directory: dashboard
+      - name: Vet (dashboard)
+        run: go vet ./...
+        working-directory: dashboard
+      - name: Test (dashboard)
+        run: go test ./...
+        working-directory: dashboard
 
   dependency-audit:
     name: Rust dependency audit (Phase 10)

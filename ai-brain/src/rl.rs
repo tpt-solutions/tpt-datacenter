@@ -23,12 +23,12 @@
 
 use burn::backend::autodiff::Autodiff;
 use burn::backend::ndarray::{NdArray, NdArrayDevice};
-use burn::module::{Module, Param};
+use burn::module::Param;
 use burn::nn::{Linear, LinearConfig};
 use burn::optim::{Optimizer, SgdConfig};
 use burn::tensor::activation::relu;
 use burn::tensor::backend::Backend;
-use burn::tensor::{Data, Distribution, Tensor};
+use burn::tensor::{Distribution, Tensor, TensorData};
 
 use crate::model::{Action, BrainModel, BrainNet, HotspotNet, State};
 
@@ -65,10 +65,16 @@ impl<B: burn::tensor::backend::Backend<FloatElem = f32>> ActorNet<B> {
     /// Build a fresh (random) actor on `device`.
     pub fn new(device: &B::Device) -> Self {
         ActorNet {
-            lin1: LinearConfig::new(STATE_DIM, HIDDEN).with_bias(true).init(device),
-            lin2: LinearConfig::new(HIDDEN, HIDDEN).with_bias(true).init(device),
-            lin3: LinearConfig::new(HIDDEN, ACTION_DIM).with_bias(true).init(device),
-            log_std: Tensor::from_data(Data::from([(-0.5f32); ACTION_DIM]), device),
+            lin1: LinearConfig::new(STATE_DIM, HIDDEN)
+                .with_bias(true)
+                .init(device),
+            lin2: LinearConfig::new(HIDDEN, HIDDEN)
+                .with_bias(true)
+                .init(device),
+            lin3: LinearConfig::new(HIDDEN, ACTION_DIM)
+                .with_bias(true)
+                .init(device),
+            log_std: Tensor::from_data(TensorData::from([(-0.5f32); ACTION_DIM]), device),
         }
     }
 
@@ -91,7 +97,9 @@ impl<B: burn::tensor::backend::Backend<FloatElem = f32>> ValueNet<B> {
     /// Build a fresh (random) critic on `device`.
     pub fn new(device: &B::Device) -> Self {
         ValueNet {
-            lin1: LinearConfig::new(STATE_DIM, HIDDEN).with_bias(true).init(device),
+            lin1: LinearConfig::new(STATE_DIM, HIDDEN)
+                .with_bias(true)
+                .init(device),
             lin2: LinearConfig::new(HIDDEN, 1).with_bias(true).init(device),
         }
     }
@@ -124,23 +132,25 @@ impl GaussianActor {
     fn new(device: &NdArrayDevice) -> Self {
         GaussianActor {
             net: ActorNet::<RLBackend>::new(device),
-            device: device.clone(),
+            device: *device,
         }
     }
 
     /// Squashed mean action (valve, fan) in [0,1] for a single state.
     #[allow(dead_code)]
     fn mean_action(&self, s: &State) -> (f32, f32) {
-        let input = Tensor::<RLBackend, 2>::from_data(Data::from([s.to_array()]), &self.device);
+        let input =
+            Tensor::<RLBackend, 2>::from_data(TensorData::from([s.to_array()]), &self.device);
         let m = self.net.mean(input);
-        let v = m.to_data().convert::<f32>().value;
+        let v = m.to_data().into_vec::<f32>().unwrap();
         (v[0], v[1])
     }
 
     /// Reparameterized sample `a ~ N(mean, std)` and the squashed mean, both
     /// `[1, 2]` autodiff tensors.
     fn sample(&self, s: &State) -> (Tensor<RLBackend, 2>, Tensor<RLBackend, 2>) {
-        let input = Tensor::<RLBackend, 2>::from_data(Data::from([s.to_array()]), &self.device);
+        let input =
+            Tensor::<RLBackend, 2>::from_data(TensorData::from([s.to_array()]), &self.device);
         let mean = self.net.mean(input); // [1, 2] in (0,1)
         let std = self.net.log_std.clone().exp().unsqueeze(); // [1, 2]
         let noise = Tensor::<RLBackend, 2>::random_like(&mean, Distribution::Normal(0.0, 1.0));
@@ -151,7 +161,11 @@ impl GaussianActor {
     /// Log-probability of `action` under the diagonal Gaussian with squashed
     /// mean `mean` and learned std. Returns a `[1, 1]` tensor (summed over the
     /// two action channels).
-    fn log_prob(&self, action: Tensor<RLBackend, 2>, mean: Tensor<RLBackend, 2>) -> Tensor<RLBackend, 2> {
+    fn log_prob(
+        &self,
+        action: Tensor<RLBackend, 2>,
+        mean: Tensor<RLBackend, 2>,
+    ) -> Tensor<RLBackend, 2> {
         let std = self.net.log_std.clone().exp().unsqueeze(); // [1, 2]
         let var = std.clone().powf_scalar(2.0);
         let two_pi = 2.0 * std::f32::consts::PI;
@@ -192,7 +206,7 @@ pub fn train_rl(
             let s = world.observe(setpoint_c);
             let (action_t, _mean_t) = actor.sample(&s);
             let a = action_t.clamp(0.0, 1.0);
-            let v = a.to_data().convert::<f32>().value;
+            let v = a.to_data().into_vec::<f32>().unwrap();
             let act = Action {
                 valve: v[0].clamp(0.0, 1.0),
                 fan: v[1].clamp(0.0, 1.0),
@@ -220,17 +234,20 @@ pub fn train_rl(
         let mut critic_loss = Tensor::<RLBackend, 2>::zeros([1, 1], &device);
 
         for (t, step) in steps.iter().enumerate() {
-            let obs = Tensor::<RLBackend, 2>::from_data(Data::from([step.state.to_array()]), &device);
+            let obs = Tensor::<RLBackend, 2>::from_data(
+                TensorData::from([step.state.to_array()]),
+                &device,
+            );
             let value = critic.forward(obs.clone()); // [1, 1]
             let (action_t, mean_t) = actor.sample(&step.state);
             let a = action_t.clamp(0.0, 1.0);
             let logp = actor.log_prob(a, mean_t); // [1, 1]
 
-            let adv = returns[t] - value.clone().to_data().convert::<f32>().value[0];
+            let adv = returns[t] - value.clone().to_data().into_vec::<f32>().unwrap()[0];
             // Policy loss: -log π(a|s) · A  (REINFORCE with baseline).
             actor_loss = actor_loss + logp.neg().mul_scalar(adv);
             // Value loss: (V(s) - G)^2.
-            let g_t = Tensor::<RLBackend, 2>::from_data(Data::from([[returns[t]]]), &device);
+            let g_t = Tensor::<RLBackend, 2>::from_data(TensorData::from([[returns[t]]]), &device);
             critic_loss = critic_loss + value.sub(g_t).powf_scalar(2.0);
         }
 
@@ -239,14 +256,10 @@ pub fn train_rl(
         critic_loss = critic_loss.div_scalar(n);
 
         // --- Backward + SGD update ---------------------------------------
-        let actor_grads = burn::optim::GradientsParams::from_grads(
-            actor_loss.backward(),
-            &actor.net,
-        );
-        let critic_grads = burn::optim::GradientsParams::from_grads(
-            critic_loss.backward(),
-            &critic,
-        );
+        let actor_grads =
+            burn::optim::GradientsParams::from_grads(actor_loss.backward(), &actor.net);
+        let critic_grads =
+            burn::optim::GradientsParams::from_grads(critic_loss.backward(), &critic);
         actor.net = actor_opt.step(lr as f64, actor.net, actor_grads);
         critic = critic_opt.step((lr * 0.5) as f64, critic, critic_grads);
 
@@ -266,12 +279,48 @@ fn export_actor_to_brain(actor: ActorNet<RLBackend>, _device: &NdArrayDevice) ->
     let device = NdArrayDevice::default();
     let mut net = BrainNet::<InfBackend>::new(&device);
 
-    let l1w = Tensor::<NdArray, 2>::from_data(actor.lin1.weight.val().to_data().convert::<f32>(), &device);
-    let l1b = Tensor::<NdArray, 1>::from_data(actor.lin1.bias.expect("bias present").val().to_data().convert::<f32>(), &device);
-    let l2w = Tensor::<NdArray, 2>::from_data(actor.lin2.weight.val().to_data().convert::<f32>(), &device);
-    let l2b = Tensor::<NdArray, 1>::from_data(actor.lin2.bias.expect("bias present").val().to_data().convert::<f32>(), &device);
-    let l3w = Tensor::<NdArray, 2>::from_data(actor.lin3.weight.val().to_data().convert::<f32>(), &device);
-    let l3b = Tensor::<NdArray, 1>::from_data(actor.lin3.bias.expect("bias present").val().to_data().convert::<f32>(), &device);
+    let l1w = Tensor::<NdArray, 2>::from_data(
+        actor.lin1.weight.val().to_data().convert::<f32>(),
+        &device,
+    );
+    let l1b = Tensor::<NdArray, 1>::from_data(
+        actor
+            .lin1
+            .bias
+            .expect("bias present")
+            .val()
+            .to_data()
+            .convert::<f32>(),
+        &device,
+    );
+    let l2w = Tensor::<NdArray, 2>::from_data(
+        actor.lin2.weight.val().to_data().convert::<f32>(),
+        &device,
+    );
+    let l2b = Tensor::<NdArray, 1>::from_data(
+        actor
+            .lin2
+            .bias
+            .expect("bias present")
+            .val()
+            .to_data()
+            .convert::<f32>(),
+        &device,
+    );
+    let l3w = Tensor::<NdArray, 2>::from_data(
+        actor.lin3.weight.val().to_data().convert::<f32>(),
+        &device,
+    );
+    let l3b = Tensor::<NdArray, 1>::from_data(
+        actor
+            .lin3
+            .bias
+            .expect("bias present")
+            .val()
+            .to_data()
+            .convert::<f32>(),
+        &device,
+    );
 
     net.lin1.weight = Param::from_tensor(l1w);
     net.lin1.bias = Some(Param::from_tensor(l1b));
@@ -311,16 +360,16 @@ pub fn train_hotspot(
     for ep in 0..epochs {
         let mut total_loss = 0.0f32;
         for s in samples {
-            let input = Tensor::<RLBackend, 2>::from_data(Data::from([s.state.to_array()]), &device);
+            let input =
+                Tensor::<RLBackend, 2>::from_data(TensorData::from([s.state.to_array()]), &device);
             let logit = head.forward(input); // [1, 1]
-            let target = Tensor::<RLBackend, 2>::from_data(Data::from([[s.label]]), &device);
+            let target = Tensor::<RLBackend, 2>::from_data(TensorData::from([[s.label]]), &device);
             // Binary cross-entropy with logits:
             // L = max(logit,0) - logit*target + log(1+exp(-|logit|))
             let z = logit.clone();
-            let loss = z.clone().clamp(0.0, f32::MAX)
-                - z.clone() * target.clone()
+            let loss = z.clone().clamp(0.0, f32::MAX) - z.clone() * target.clone()
                 + (z.clone().neg().exp().add_scalar(1.0)).log();
-            total_loss += loss.to_data().convert::<f32>().value[0];
+            total_loss += loss.to_data().into_vec::<f32>().unwrap()[0];
 
             let grads = burn::optim::GradientsParams::from_grads(loss.backward(), &head);
             head = opt.step(lr as f64, head, grads);
@@ -341,7 +390,12 @@ pub fn train_hotspot(
         &device,
     ));
     out_head.lin1.bias = Some(Param::from_tensor(Tensor::<NdArray, 1>::from_data(
-        head.lin1.bias.expect("bias present").val().to_data().convert::<f32>(),
+        head.lin1
+            .bias
+            .expect("bias present")
+            .val()
+            .to_data()
+            .convert::<f32>(),
         &device,
     )));
     out_head.lin2.weight = Param::from_tensor(Tensor::<NdArray, 2>::from_data(
@@ -349,7 +403,12 @@ pub fn train_hotspot(
         &device,
     ));
     out_head.lin2.bias = Some(Param::from_tensor(Tensor::<NdArray, 1>::from_data(
-        head.lin2.bias.expect("bias present").val().to_data().convert::<f32>(),
+        head.lin2
+            .bias
+            .expect("bias present")
+            .val()
+            .to_data()
+            .convert::<f32>(),
         &device,
     )));
 

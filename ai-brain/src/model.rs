@@ -21,7 +21,7 @@ use burn::backend::{ndarray::NdArrayDevice, NdArray};
 use burn::module::Module;
 use burn::nn::{Linear, LinearConfig};
 use burn::tensor::activation::relu;
-use burn::tensor::{Data, Tensor};
+use burn::tensor::{Tensor, TensorData};
 
 /// Backend used for inference. CPU-only, no GPU libs required (so it builds in
 /// CI and on the edge). The training pipeline may use `wgpu`/`tch` instead.
@@ -187,10 +187,10 @@ impl BrainModel {
 
     /// Produce the raw (valve, fan) pair as floats before clamping.
     pub fn raw(&self, state: &State) -> (f32, f32) {
-        let input = Data::<f32, 2>::from([state.to_array()]);
+        let input = TensorData::from([state.to_array()]);
         let x = Tensor::<BrainBackend, 2>::from_data(input, &self.device);
         let out = self.net.forward(x);
-        let v = out.to_data().convert::<f32>().value;
+        let v = out.to_data().into_vec::<f32>().unwrap();
         // saturate the raw logits into 0..1 via sigmoid for a sane default.
         let sig = |x: f32| 1.0 / (1.0 + (-x).exp());
         (sig(v[0]), sig(v[1]))
@@ -199,10 +199,10 @@ impl BrainModel {
     /// Predict the probability (0..1) that this rack will thermally violate the
     /// setpoint in the near future, given the current state.
     pub fn predict_hotspot(&self, state: &State) -> f32 {
-        let input = Data::<f32, 2>::from([state.to_array()]);
+        let input = TensorData::from([state.to_array()]);
         let x = Tensor::<BrainBackend, 2>::from_data(input, &self.device);
         let out = self.hotspot.forward(x);
-        let v = out.to_data().convert::<f32>().value;
+        let v = out.to_data().into_vec::<f32>().unwrap();
         let sig = |x: f32| 1.0 / (1.0 + (-x).exp());
         sig(v[0]).clamp(0.0, 1.0)
     }

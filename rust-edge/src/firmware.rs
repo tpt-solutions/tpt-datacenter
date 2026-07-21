@@ -15,10 +15,10 @@
 
 use core::fmt;
 
-#[cfg(not(feature = "no_std"))]
-extern crate std;
 #[cfg(feature = "no_std")]
 extern crate alloc;
+#[cfg(not(feature = "no_std"))]
+extern crate std;
 
 #[cfg(not(feature = "no_std"))]
 use std::vec::Vec;
@@ -46,7 +46,9 @@ impl fmt::Display for FirmwareError {
         match self {
             FirmwareError::BadSignature => write!(f, "malformed signature"),
             FirmwareError::BadKey => write!(f, "invalid public key"),
-            FirmwareError::VerificationFailed => write!(f, "firmware signature verification failed"),
+            FirmwareError::VerificationFailed => {
+                write!(f, "firmware signature verification failed")
+            }
             FirmwareError::KeyNotAllowed => write!(f, "signer key not in allowed set"),
         }
     }
@@ -82,7 +84,9 @@ pub struct UpdatePolicy {
 impl UpdatePolicy {
     /// Allow updates signed by any of the given keys (key pinning).
     pub fn pinned(keys: &[SigningKey]) -> Self {
-        UpdatePolicy { allowed: keys.to_vec() }
+        UpdatePolicy {
+            allowed: keys.to_vec(),
+        }
     }
 
     /// Allow any signer (no pinning). Use only with a fully trusted channel.
@@ -115,7 +119,8 @@ pub fn verify_update(policy: &UpdatePolicy, update: &Update<'_>) -> Result<(), F
     }
     let vk = update.signer.verifying_key()?;
     let sig = Signature::from_slice(update.signature).map_err(|_| FirmwareError::BadSignature)?;
-    vk.verify(update.image, &sig).map_err(|_| FirmwareError::VerificationFailed)
+    vk.verify(update.image, &sig)
+        .map_err(|_| FirmwareError::VerificationFailed)
 }
 
 /// Decode a hex-encoded public key into raw bytes (for config/tooling).
@@ -126,8 +131,11 @@ pub fn decode_hex_key(s: &str) -> Result<[u8; 32], FirmwareError> {
     }
     let mut out = [0u8; 32];
     for (i, chunk) in s.as_bytes().chunks(2).enumerate() {
-        let byte = u8::from_str_radix(core::str::from_utf8(chunk).map_err(|_| FirmwareError::BadKey)?, 16)
-            .map_err(|_| FirmwareError::BadKey)?;
+        let byte = u8::from_str_radix(
+            core::str::from_utf8(chunk).map_err(|_| FirmwareError::BadKey)?,
+            16,
+        )
+        .map_err(|_| FirmwareError::BadKey)?;
         out[i] = byte;
     }
     Ok(out)
@@ -181,7 +189,9 @@ where
     /// signer check fails — the image is never exposed for flashing.
     pub fn prepare<'a>(&self, update: &Update<'a>) -> Result<ApprovedUpdate<'a>, FirmwareError> {
         verify_update(self.policy, update)?;
-        Ok(ApprovedUpdate { image: update.image })
+        Ok(ApprovedUpdate {
+            image: update.image,
+        })
     }
 
     /// Verify and, if valid, immediately apply the update to flash via the
@@ -195,17 +205,21 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::{SigningKey as Sk, Signer};
+    use ed25519_dalek::{Signer, SigningKey as Sk};
 
     // Deterministic test key (NOT a real release key).
     const TEST_RAW: [u8; 32] = [
-        0x1a, 0x2b, 0x3c, 0x4d, 0x5e, 0x6f, 0x70, 0x81, 0x92, 0xa3, 0xb4, 0xc5, 0xd6, 0xe7, 0xf8, 0x09,
-        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00,
+        0x1a, 0x2b, 0x3c, 0x4d, 0x5e, 0x6f, 0x70, 0x81, 0x92, 0xa3, 0xb4, 0xc5, 0xd6, 0xe7, 0xf8,
+        0x09, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee,
+        0xff, 0x00,
     ];
 
     fn test_signing_key() -> SigningKey {
         let sk = Sk::from_bytes(&TEST_RAW);
-        SigningKey { id: "test", raw: sk.verifying_key().to_bytes() }
+        SigningKey {
+            id: "test",
+            raw: sk.verifying_key().to_bytes(),
+        }
     }
 
     #[test]
@@ -215,7 +229,11 @@ mod tests {
         let sig = sk.sign(image).to_bytes().to_vec();
         let key = test_signing_key();
         let policy = UpdatePolicy::pinned(std::slice::from_ref(&key));
-        let upd = Update { image, signature: &sig, signer: &key };
+        let upd = Update {
+            image,
+            signature: &sig,
+            signer: &key,
+        };
         assert!(verify_update(&policy, &upd).is_ok());
     }
 
@@ -227,8 +245,15 @@ mod tests {
         let key = test_signing_key();
         let policy = UpdatePolicy::pinned(std::slice::from_ref(&key));
         let tampered = b"tpt-edge-firmware-BACKDOORED";
-        let upd = Update { image: tampered, signature: &sig, signer: &key };
-        assert_eq!(verify_update(&policy, &upd), Err(FirmwareError::VerificationFailed));
+        let upd = Update {
+            image: tampered,
+            signature: &sig,
+            signer: &key,
+        };
+        assert_eq!(
+            verify_update(&policy, &upd),
+            Err(FirmwareError::VerificationFailed)
+        );
     }
 
     #[test]
@@ -237,9 +262,19 @@ mod tests {
         let image = b"img";
         let sig = sk.sign(image).to_bytes().to_vec();
         let key = test_signing_key();
-        let policy = UpdatePolicy::pinned(&[SigningKey { id: "other", raw: key.raw }]);
-        let upd = Update { image, signature: &sig, signer: &key };
-        assert_eq!(verify_update(&policy, &upd), Err(FirmwareError::KeyNotAllowed));
+        let policy = UpdatePolicy::pinned(&[SigningKey {
+            id: "other",
+            raw: key.raw,
+        }]);
+        let upd = Update {
+            image,
+            signature: &sig,
+            signer: &key,
+        };
+        assert_eq!(
+            verify_update(&policy, &upd),
+            Err(FirmwareError::KeyNotAllowed)
+        );
     }
 
     #[test]
@@ -258,14 +293,26 @@ mod tests {
             Ok(())
         });
 
-        let upd = Update { image, signature: &sig, signer: &key };
+        let upd = Update {
+            image,
+            signature: &sig,
+            signer: &key,
+        };
         updater.apply(&upd).expect("signed update should apply");
         assert_eq!(&flashed.borrow()[..], image);
 
         // A tampered image must never reach `apply`.
         let tampered = b"tpt-edge-firmware-BACKDOORED";
-        let bad = Update { image: tampered, signature: &sig, signer: &key };
+        let bad = Update {
+            image: tampered,
+            signature: &sig,
+            signer: &key,
+        };
         assert_eq!(updater.apply(&bad), Err(FirmwareError::VerificationFailed));
-        assert_eq!(&flashed.borrow()[..], image, "tampered image must not be flashed");
+        assert_eq!(
+            &flashed.borrow()[..],
+            image,
+            "tampered image must not be flashed"
+        );
     }
 }

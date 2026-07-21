@@ -53,7 +53,7 @@ mod tests {
     use super::rl::{train_rl, RLBackend};
     use super::safety::{GuardedPolicy, Limits};
     use super::serve::BrainServer;
-    use super::train::{MockWorld, SimWorld, TrainEnv, tune_heuristic};
+    use super::train::{tune_heuristic, MockWorld, SimWorld, TrainEnv};
 
     fn sample_state() -> State {
         State {
@@ -96,7 +96,10 @@ mod tests {
         let mut env_h = TrainEnv::new(MockWorld::new(40.0, 0.9, 18.0), 27.0, 5.0, 60);
         let cost_h = env_h.run_episode(&h);
 
-        assert!(cost_h < cost_naive, "heuristic {cost_h} should beat no-cooling {cost_naive}");
+        assert!(
+            cost_h < cost_naive,
+            "heuristic {cost_h} should beat no-cooling {cost_naive}"
+        );
     }
 
     #[test]
@@ -175,7 +178,10 @@ mod tests {
         let mut srv = BrainServer::new(
             model,
             Limits::defaults(27.0),
-            Action { valve: 0.2, fan: 0.2 },
+            Action {
+                valve: 0.2,
+                fan: 0.2,
+            },
         );
         let cmd = srv.step(&sample_state());
         assert!((0.0..=100.0).contains(&cmd.valve_position));
@@ -212,7 +218,13 @@ mod tests {
     #[allow(dead_code)]
     fn _uses_guarded() {
         let h = HeuristicController::default_for(27.0);
-        let _g: GuardedPolicy<HeuristicController> =
-            GuardedPolicy::new(h, Limits::defaults(27.0), Action { valve: 0.3, fan: 0.3 });
+        let _g: GuardedPolicy<HeuristicController> = GuardedPolicy::new(
+            h,
+            Limits::defaults(27.0),
+            Action {
+                valve: 0.3,
+                fan: 0.3,
+            },
+        );
     }
 }

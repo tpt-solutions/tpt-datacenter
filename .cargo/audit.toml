@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2024 TPT Solutions
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Acknowledged advisory suppressions for transitive dependencies that cannot
+# be upgraded without burn changing its own dependency tree.  Each entry must
+# be revisited whenever burn is upgraded.
+
+[advisories]
+ignore = [
+    # bincode 2.0.1 is a transitive dep of burn-core; upstream burn tracking
+    # the successor crate (bincode 3 / binio) will remove this.
+    "RUSTSEC-2025-0141",
+    # paste 1.0.15 is a transitive dep of burn's proc-macro stack.
+    "RUSTSEC-2024-0436",
+    # lru 0.12.5 is a transitive dep of ratatui (used by burn-train).
+    # The IterMut soundness issue is not reachable from our code paths.
+    "RUSTSEC-2026-0002",
+]

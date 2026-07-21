@@ -5,7 +5,13 @@
 [advisories]
 version = 2
 yanked = "warn"
-ignore = []
+# Transitive deps from burn that cannot be upgraded without burn changing its
+# own dependency tree.  Mirror the entries in .cargo/audit.toml.
+ignore = [
+    { id = "RUSTSEC-2025-0141", reason = "bincode 2.0.1 is a transitive dep of burn-core" },
+    { id = "RUSTSEC-2024-0436", reason = "paste is a transitive dep of burn's proc-macro stack" },
+    { id = "RUSTSEC-2026-0002", reason = "lru is a transitive dep of ratatui (burn-train); not reachable from our code paths" },
+]
 
 [licenses]
 version = 2

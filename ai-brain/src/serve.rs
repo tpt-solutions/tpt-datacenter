@@ -112,7 +112,14 @@ mod tests {
     #[test]
     fn serve_emits_percentage_command() {
         let h = HeuristicController::default_for(27.0);
-        let mut srv = BrainServer::new(h, crate::safety::Limits::defaults(27.0), Action { valve: 0.3, fan: 0.3 });
+        let mut srv = BrainServer::new(
+            h,
+            crate::safety::Limits::defaults(27.0),
+            Action {
+                valve: 0.3,
+                fan: 0.3,
+            },
+        );
         let cmd = srv.step(&st());
         assert!((0.0..=100.0).contains(&cmd.valve_position));
         assert!((0.0..=100.0).contains(&cmd.fan_speed));
@@ -121,7 +128,14 @@ mod tests {
     #[test]
     fn serve_override_yields_safe_percent_command() {
         let h = HeuristicController::default_for(27.0);
-        let mut srv = BrainServer::new(h, crate::safety::Limits::defaults(27.0), Action { valve: 0.2, fan: 0.2 });
+        let mut srv = BrainServer::new(
+            h,
+            crate::safety::Limits::defaults(27.0),
+            Action {
+                valve: 0.2,
+                fan: 0.2,
+            },
+        );
         srv.set_override(true);
         let cmd = srv.step(&st());
         assert!((cmd.valve_position - 20.0).abs() < 1e-3);

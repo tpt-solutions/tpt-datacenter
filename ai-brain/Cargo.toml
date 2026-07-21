@@ -14,9 +14,6 @@ categories = ["science", "algorithms", "embedded"]
 serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-burn = { version = "0.13", features = ["std", "ndarray", "autodiff"] }
-# burn 0.13.2 relies on a bincode 2.0.0-rc.3 API (`decode_borrowed_from_slice`)
-# that was removed in the stable bincode 2.0 release; pin to keep it building.
-bincode = "=2.0.0-rc.3"
+burn = { version = "0.17", features = ["std", "ndarray", "autodiff"] }
 
 [dev-dependencies]

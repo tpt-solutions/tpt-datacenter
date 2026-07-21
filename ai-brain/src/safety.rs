@@ -110,15 +110,19 @@ impl<P: Policy> GuardedPolicy<P> {
 
         // Physical envelope.
         let mut a = Action {
-            valve: proposed.valve.clamp(self.limits.min_valve, self.limits.max_valve),
+            valve: proposed
+                .valve
+                .clamp(self.limits.min_valve, self.limits.max_valve),
             fan: proposed.fan.clamp(self.limits.min_fan, self.limits.max_fan),
         };
 
         // Rate limiting relative to the last emitted action. `last` is `Copy`,
         // so reading it through `&self` is sound.
         if let Some(prev) = self.last {
-            let dv = (a.valve - prev.valve).clamp(-self.limits.max_valve_delta, self.limits.max_valve_delta);
-            let df = (a.fan - prev.fan).clamp(-self.limits.max_fan_delta, self.limits.max_fan_delta);
+            let dv = (a.valve - prev.valve)
+                .clamp(-self.limits.max_valve_delta, self.limits.max_valve_delta);
+            let df =
+                (a.fan - prev.fan).clamp(-self.limits.max_fan_delta, self.limits.max_fan_delta);
             a = Action {
                 valve: (prev.valve + dv).clamp(0.0, 1.0),
                 fan: (prev.fan + df).clamp(0.0, 1.0),
@@ -181,7 +185,14 @@ mod tests {
     #[test]
     fn emergency_forces_max_cooling() {
         let h = HeuristicController::default_for(27.0);
-        let mut g = GuardedPolicy::new(h, Limits::defaults(27.0), Action { valve: 0.3, fan: 0.3 });
+        let mut g = GuardedPolicy::new(
+            h,
+            Limits::defaults(27.0),
+            Action {
+                valve: 0.3,
+                fan: 0.3,
+            },
+        );
         // temp_error such that temp = 27 + 20 = 47 >= 39 (setpoint+12).
         let a = g.decide_mut(&st(2.0));
         assert_eq!(a.valve, 1.0);
@@ -191,7 +202,14 @@ mod tests {
     #[test]
     fn rate_limit_binds_per_step_change() {
         let h = HeuristicController::default_for(27.0);
-        let mut g = GuardedPolicy::new(h, Limits::defaults(27.0), Action { valve: 0.0, fan: 0.0 });
+        let mut g = GuardedPolicy::new(
+            h,
+            Limits::defaults(27.0),
+            Action {
+                valve: 0.0,
+                fan: 0.0,
+            },
+        );
         // First decision: heuristic gives some value, stored as last.
         let _ = g.decide_mut(&st(0.5));
         // Second decision wants full close (0,0); rate limit caps the drop.
@@ -204,10 +222,23 @@ mod tests {
     #[test]
     fn override_emits_safe_action() {
         let h = HeuristicController::default_for(27.0);
-        let mut g = GuardedPolicy::new(h, Limits::defaults(27.0), Action { valve: 0.2, fan: 0.2 });
+        let mut g = GuardedPolicy::new(
+            h,
+            Limits::defaults(27.0),
+            Action {
+                valve: 0.2,
+                fan: 0.2,
+            },
+        );
         g.set_override(true);
         let a = g.decide_mut(&st(1.0));
-        assert_eq!(a, Action { valve: 0.2, fan: 0.2 });
+        assert_eq!(
+            a,
+            Action {
+                valve: 0.2,
+                fan: 0.2
+            }
+        );
         assert!(g.is_overridden());
     }
 }
